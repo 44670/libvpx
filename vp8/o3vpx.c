@@ -94,6 +94,8 @@
 #define QUALITY_GAIN_SCALE_MAX 2.00
 #define QUALITY_PLANE_GAIN_MIN 0.80
 #define QUALITY_PLANE_GAIN_MAX 1.75
+#define IDCT_COSPI8SQRT2MINUS1 20091
+#define IDCT_SINPI8SQRT2 35468
 
 void vp8_short_fdct4x4_c(short *input, short *output, int pitch);
 void vp8_short_idct4x4llm_c(short *input, unsigned char *pred_ptr,
@@ -1555,6 +1557,49 @@ static int collect_res_candidates(const uint8_t *src, const uint8_t *ref,
   return count;
 }
 
+static void apply_res4_col0_to_frame(uint8_t *dst, int base, int stride, int x,
+                                     int y, const ResBlock *block,
+                                     int block_res_q) {
+  const int qdc = coeff_q_step(block_res_q, 0);
+  const int qac = coeff_q_step(block_res_q, 4);
+  const int in0 = (block->coeff_mask & 0x0001)
+                      ? block->qcoeff[0] * qdc
+                      : 0;
+  const int in4 = (block->coeff_mask & 0x0004)
+                      ? block->qcoeff[4] * qac
+                      : 0;
+  const int in8 = (block->coeff_mask & 0x0008)
+                      ? block->qcoeff[8] * qac
+                      : 0;
+  const int in12 = (block->coeff_mask & 0x0200)
+                       ? block->qcoeff[12] * qac
+                       : 0;
+  const int a1 = in0 + in8;
+  const int b1 = in0 - in8;
+  int temp1 = (in4 * IDCT_SINPI8SQRT2) >> 16;
+  int temp2 = in12 + ((in12 * IDCT_COSPI8SQRT2MINUS1) >> 16);
+  const int c1 = temp1 - temp2;
+  short row_out[4];
+  int row;
+  int col;
+  temp1 = in4 + ((in4 * IDCT_COSPI8SQRT2MINUS1) >> 16);
+  temp2 = (in12 * IDCT_SINPI8SQRT2) >> 16;
+  {
+    const int d1 = temp1 + temp2;
+    row_out[0] = (short)(a1 + d1);
+    row_out[3] = (short)(a1 - d1);
+  }
+  row_out[1] = (short)(b1 + c1);
+  row_out[2] = (short)(b1 - c1);
+  for (row = 0; row < 4; ++row) {
+    const int add = (row_out[row] + 4) >> 3;
+    uint8_t *d = dst + base + (y + row) * stride + x;
+    for (col = 0; col < 4; ++col) {
+      d[col] = clip_u8_int((int)d[col] + add);
+    }
+  }
+}
+
 static void apply_res4_to_frame(uint8_t *dst, int mb_index,
                                 const ResBlock *block, int res_q) {
   int base;
@@ -1575,6 +1620,10 @@ static void apply_res4_to_frame(uint8_t *dst, int mb_index,
     const short dc = (short)(block->qcoeff[0] * coeff_q_step(block_res_q, 0));
     vp8_dc_only_idct_add_c(dc, dst + base + y * stride + x, stride,
                            dst + base + y * stride + x, stride);
+    return;
+  }
+  if ((block->coeff_mask & (uint16_t)~0x020d) == 0) {
+    apply_res4_col0_to_frame(dst, base, stride, x, y, block, block_res_q);
     return;
   }
   memset(deq, 0, sizeof(deq));
