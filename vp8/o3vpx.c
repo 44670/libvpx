@@ -563,20 +563,44 @@ static void copy_mb_from_ref(uint8_t *dst, const uint8_t *ref, int mb_index,
   int uvy = mb_y * 8;
   int ruvx = uvx + round_div4(mv.col);
   int ruvy = uvy + round_div4(mv.row);
-  if (((mv.col | mv.row) & 1) == 0) {
-    const int rx = rx2 / 2;
-    const int ry = ry2 / 2;
+  const int rx = rx2 >> 1;
+  const int ry = ry2 >> 1;
+  const int fx = rx2 & 1;
+  const int fy = ry2 & 1;
+  if (!fx && !fy) {
     for (row = 0; row < 16; ++row) {
       memcpy(dst_y + (y + row) * WIDTH + x,
              ref_y + (ry + row) * WIDTH + rx, 16);
     }
   } else {
     int col;
-    for (row = 0; row < 16; ++row) {
-      uint8_t *d = dst_y + (y + row) * WIDTH + x;
-      for (col = 0; col < 16; ++col) {
-        d[col] = sample_halfpel_u8(ref_y, WIDTH, rx2 + col * 2,
-                                   ry2 + row * 2);
+    if (fx && !fy) {
+      for (row = 0; row < 16; ++row) {
+        const uint8_t *s = ref_y + (ry + row) * WIDTH + rx;
+        uint8_t *d = dst_y + (y + row) * WIDTH + x;
+        for (col = 0; col < 16; ++col) {
+          d[col] = avg2_u8(s[col], s[col + 1]);
+        }
+      }
+    } else if (!fx && fy) {
+      for (row = 0; row < 16; ++row) {
+        const uint8_t *s0 = ref_y + (ry + row) * WIDTH + rx;
+        const uint8_t *s1 = s0 + WIDTH;
+        uint8_t *d = dst_y + (y + row) * WIDTH + x;
+        for (col = 0; col < 16; ++col) {
+          d[col] = avg2_u8(s0[col], s1[col]);
+        }
+      }
+    } else {
+      for (row = 0; row < 16; ++row) {
+        const uint8_t *s0 = ref_y + (ry + row) * WIDTH + rx;
+        const uint8_t *s1 = s0 + WIDTH;
+        uint8_t *d = dst_y + (y + row) * WIDTH + x;
+        for (col = 0; col < 16; ++col) {
+          d[col] = (uint8_t)(((int)s0[col] + (int)s0[col + 1] +
+                              (int)s1[col] + (int)s1[col + 1] + 2) >>
+                             2);
+        }
       }
     }
   }
