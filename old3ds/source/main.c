@@ -315,6 +315,12 @@ static int run_bench(void *decoder, u8 *left, u8 *right, size_t eye_bytes) {
   const u64 worst_decode_us = ticks_to_us(worst_decode_ticks);
   const u64 worst_output_us = ticks_to_us(worst_output_ticks);
   const int pass = worst_us <= O3VPX_TARGET_US;
+  bench_log("functional_result status=pass codec=o3vpx iterations=%d "
+            "frames=%lu frames_per_iteration=%lu source_window=f10000_10200 "
+            "output_mode=split_copy checksum=0x%016llx\n",
+            O3VPX_BENCH_ITERATIONS, (unsigned long)total_frames,
+            (unsigned long)frames_per_iteration,
+            (unsigned long long)checksum);
   bench_log("bench_result status=%s codec=o3vpx iterations=%d frames=%lu "
             "frames_per_iteration=%lu output_mode=split_copy min_us=%llu "
             "mean_us=%llu decode_mean_us=%llu output_mean_us=%llu "
