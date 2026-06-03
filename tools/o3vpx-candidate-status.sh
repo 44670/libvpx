@@ -77,6 +77,7 @@ try:
     quality = load_json("quality_vs_h264.json")
     host = load_json("profile_decode_host.json")
     arm = load_json("profile_decode_arm_qemu.json")
+    targeted = load_json("arm_qemu_targeted_trace.json")
     azahar = load_json("azahar_functional.json")
 except Exception as exc:
     print(f"o3vpx_candidate_status status=fail reason=metadata_error detail={type(exc).__name__}:{exc}")
@@ -92,6 +93,8 @@ required_files = [
     "baseline_h264_psnr.log",
     "profile_decode_host.json",
     "profile_decode_arm_qemu.json",
+    "arm_qemu_targeted_trace.json",
+    "trace_slice_frame108.o3vx",
     "azahar_functional.json",
     "o3vpxbench.3dsx",
     "old3ds_sdcard.zip",
@@ -139,6 +142,17 @@ check("arm_raw_key_trace", proxy.get("raw_key_trace_entries", 0) > 0, proxy.get(
 check("arm_first_p_trace", proxy.get("first_p_frame_incremental_trace_entries", 0) > 0, proxy.get("first_p_frame_incremental_trace_entries"))
 check("arm_trace_log1", exists(proxy.get("qemu_decnull1_exec_log", "")), proxy.get("qemu_decnull1_exec_log"))
 check("arm_trace_log2", exists(proxy.get("qemu_decnull2_exec_log", "")), proxy.get("qemu_decnull2_exec_log"))
+
+target_proxy = targeted.get("instruction_proxy", {})
+check("target_trace_status", targeted.get("status") == "pass", targeted.get("status"))
+check("target_trace_frame", targeted.get("target_frame_zero_based") == 108, targeted.get("target_frame_zero_based"))
+check("target_trace_reconstruction", targeted.get("slice_reconstruction_verified") is True, targeted.get("slice_reconstruction_verified"))
+check("target_trace_armv6", targeted.get("elf", {}).get("cpu_arch") == "v6", targeted.get("elf", {}).get("cpu_arch"))
+check("target_trace_non_neon", targeted.get("elf", {}).get("neon") is False, targeted.get("elf", {}).get("neon"))
+check("target_trace_memory", targeted.get("slice_decnull", {}).get("max_rss_kib", 999999) <= 65536, targeted.get("slice_decnull", {}).get("max_rss_kib"))
+check("target_trace_entries", target_proxy.get("target_frame_incremental_trace_entries", 0) > 0, target_proxy.get("target_frame_incremental_trace_entries"))
+check("target_trace_log1", exists(target_proxy.get("qemu_decnull1_exec_log", "")), target_proxy.get("qemu_decnull1_exec_log"))
+check("target_trace_log2", exists(target_proxy.get("qemu_decnull2_exec_log", "")), target_proxy.get("qemu_decnull2_exec_log"))
 
 check("azahar_functional_pass", azahar.get("status") == "pass", azahar.get("status"))
 check("azahar_source_window", azahar.get("source_window") == "f10000_10200", azahar.get("source_window"))
@@ -193,6 +207,7 @@ print(
     f"bitrate_mbps={summary.get('bitrate_mbps')} encode_fps={summary.get('encode_fps')} "
     f"host_decode_fps={host.get('fps')} arm_qemu_fps={arm.get('fps')} "
     f"arm_first_p_trace={proxy.get('first_p_frame_incremental_trace_entries')} "
+    f"arm_target_frame108_trace={target_proxy.get('target_frame_incremental_trace_entries')} "
     f"azahar_functional={azahar.get('status')}"
 )
 
