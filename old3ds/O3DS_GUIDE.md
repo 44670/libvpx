@@ -75,13 +75,15 @@ ffmpeg -hide_banner -y -i /mnt/hgfs/deb13/3d/1.mkv \
   -f rawvideo tmp/o3vpx_real_1_f10000_10200/source_201.yuv
 ```
 
-For a normal 2D source, duplicate the same `400x240` image into both eyes:
+For a normal 2D source, scale directly to `800x240`. Do not duplicate a
+`400x240` image into both eyes unless the test specifically needs fake SBS
+stereo content.
 
 ```sh
 mkdir -p tmp/o3vpx_2d
 ffmpeg -hide_banner -y -i /mnt/hgfs/deb13/3d/2.mp4 \
   -an \
-  -vf "select='between(n,1000,1200)',scale=400:240:flags=bicubic,split=2[l][r];[l][r]hstack=inputs=2,format=yuv420p" \
+  -vf "select='between(n,1000,1200)',scale=800:240:flags=bicubic,format=yuv420p" \
   -fps_mode passthrough \
   -frames:v 201 \
   -f rawvideo tmp/o3vpx_2d/source_201.yuv
@@ -383,6 +385,31 @@ Check host decode speed:
 
 ```sh
 grep '^o3vpx_decode_summary ' tmp/o3vpx_2d/decnull.log
+```
+
+## Current 2D Sanity Result
+
+The latest `2.mp4` direct-scale sanity run used `/mnt/hgfs/deb13/3d/2.mp4`
+frames `1000..1200`, scaled directly to `800x240`:
+
+```text
+artifact:      tmp/o3vpx_2mp4_f1000_1200_2d_scale800_r001/
+stream:        current_8m.o3vx
+stream bytes:  3,562,104
+real bitrate:  3.402607 Mbit/s
+encode speed:  36.569 fps
+host decnull:  11138.879 fps
+host decode:   5257.603 fps to YUV
+PSNR average:  52.855043 dB
+Y PSNR:        51.864739 dB
+worst frame:   45.655401 dB
+keyframes:     source frames 1000, 1048, 1068, 1116, 1137, 1185
+```
+
+The decoded PNGs for that run are under:
+
+```text
+tmp/o3vpx_2mp4_f1000_1200_2d_scale800_r001/png/
 ```
 
 ## Notes
