@@ -18,6 +18,12 @@ tiny_ssim.SRCS       += vpx_ports/mem.h vpx_ports/mem.h
 tiny_ssim.SRCS       += vpx_mem/include/vpx_mem_intrnl.h
 tiny_ssim.GUID        = 3afa9b05-940b-4d68-b5aa-55157d8ed7b4
 tiny_ssim.DESCRIPTION = Generate SSIM/PSNR from raw .yuv files
+TOOLS-yes            += o3vpx.c
+o3vpx.SRCS           += vp8/o3vpx.c vp8/o3vpx.h
+o3vpx.SRCS           += vp8/encoder/dct.c vp8/common/idctllm.c
+o3vpx.SRCS           += vpx_dsp/sad.c vpx_dsp/variance.c
+o3vpx.GUID           = 4f1f8ce7-3e9f-4cb4-9186-56c7d83f4a21
+o3vpx.DESCRIPTION    = Old3DS VP8-derived raw-key/full-pel codec experiment
 
 #
 # End of specified files. The rest of the build rules should happen
