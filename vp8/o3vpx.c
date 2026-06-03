@@ -1642,6 +1642,63 @@ static void apply_res4_row0_to_frame(uint8_t *dst, int base, int stride, int x,
   }
 }
 
+static void apply_res4_top_left_2x2_to_frame(uint8_t *dst, int base,
+                                             int stride, int x, int y,
+                                             const ResBlock *block,
+                                             int block_res_q) {
+  const int qdc = coeff_q_step(block_res_q, 0);
+  const int qac = coeff_q_step(block_res_q, 1);
+  const int in0 = (block->coeff_mask & 0x0001)
+                      ? block->qcoeff[0] * qdc
+                      : 0;
+  const int in1 = (block->coeff_mask & 0x0002)
+                      ? block->qcoeff[1] * qac
+                      : 0;
+  const int in4 = (block->coeff_mask & 0x0004)
+                      ? block->qcoeff[4] * qac
+                      : 0;
+  const int in5 = (block->coeff_mask & 0x0010)
+                      ? block->qcoeff[5] * qac
+                      : 0;
+  short col0[4];
+  short col1[4];
+  int row;
+
+  {
+    const int a1 = in0;
+    const int b1 = in0;
+    const int c1 = (in4 * IDCT_SINPI8SQRT2) >> 16;
+    const int d1 = in4 + ((in4 * IDCT_COSPI8SQRT2MINUS1) >> 16);
+    col0[0] = (short)(a1 + d1);
+    col0[3] = (short)(a1 - d1);
+    col0[1] = (short)(b1 + c1);
+    col0[2] = (short)(b1 - c1);
+  }
+  {
+    const int a1 = in1;
+    const int b1 = in1;
+    const int c1 = (in5 * IDCT_SINPI8SQRT2) >> 16;
+    const int d1 = in5 + ((in5 * IDCT_COSPI8SQRT2MINUS1) >> 16);
+    col1[0] = (short)(a1 + d1);
+    col1[3] = (short)(a1 - d1);
+    col1[1] = (short)(b1 + c1);
+    col1[2] = (short)(b1 - c1);
+  }
+
+  for (row = 0; row < 4; ++row) {
+    const int a1 = col0[row];
+    const int b1 = col0[row];
+    const int c1 = (col1[row] * IDCT_SINPI8SQRT2) >> 16;
+    const int d1 =
+        col1[row] + ((col1[row] * IDCT_COSPI8SQRT2MINUS1) >> 16);
+    uint8_t *d = dst + base + (y + row) * stride + x;
+    d[0] = clip_u8_int((int)d[0] + ((a1 + d1 + 4) >> 3));
+    d[3] = clip_u8_int((int)d[3] + ((a1 - d1 + 4) >> 3));
+    d[1] = clip_u8_int((int)d[1] + ((b1 + c1 + 4) >> 3));
+    d[2] = clip_u8_int((int)d[2] + ((b1 - c1 + 4) >> 3));
+  }
+}
+
 static void apply_res4_to_frame(uint8_t *dst, int mb_index,
                                 const ResBlock *block, int res_q) {
   int base;
@@ -1670,6 +1727,11 @@ static void apply_res4_to_frame(uint8_t *dst, int mb_index,
   }
   if ((block->coeff_mask & (uint16_t)~0x0063) == 0) {
     apply_res4_row0_to_frame(dst, base, stride, x, y, block, block_res_q);
+    return;
+  }
+  if ((block->coeff_mask & (uint16_t)~0x0017) == 0) {
+    apply_res4_top_left_2x2_to_frame(dst, base, stride, x, y, block,
+                                     block_res_q);
     return;
   }
   memset(deq, 0, sizeof(deq));
