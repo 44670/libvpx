@@ -1600,6 +1600,48 @@ static void apply_res4_col0_to_frame(uint8_t *dst, int base, int stride, int x,
   }
 }
 
+static void apply_res4_row0_to_frame(uint8_t *dst, int base, int stride, int x,
+                                     int y, const ResBlock *block,
+                                     int block_res_q) {
+  const int qdc = coeff_q_step(block_res_q, 0);
+  const int qac = coeff_q_step(block_res_q, 1);
+  const int in0 = (block->coeff_mask & 0x0001)
+                      ? block->qcoeff[0] * qdc
+                      : 0;
+  const int in1 = (block->coeff_mask & 0x0002)
+                      ? block->qcoeff[1] * qac
+                      : 0;
+  const int in2 = (block->coeff_mask & 0x0020)
+                      ? block->qcoeff[2] * qac
+                      : 0;
+  const int in3 = (block->coeff_mask & 0x0040)
+                      ? block->qcoeff[3] * qac
+                      : 0;
+  const int a1 = in0 + in2;
+  const int b1 = in0 - in2;
+  int temp1 = (in1 * IDCT_SINPI8SQRT2) >> 16;
+  int temp2 = in3 + ((in3 * IDCT_COSPI8SQRT2MINUS1) >> 16);
+  const int c1 = temp1 - temp2;
+  short col_out[4];
+  int row;
+  int col;
+  temp1 = in1 + ((in1 * IDCT_COSPI8SQRT2MINUS1) >> 16);
+  temp2 = (in3 * IDCT_SINPI8SQRT2) >> 16;
+  {
+    const int d1 = temp1 + temp2;
+    col_out[0] = (short)((a1 + d1 + 4) >> 3);
+    col_out[3] = (short)((a1 - d1 + 4) >> 3);
+  }
+  col_out[1] = (short)((b1 + c1 + 4) >> 3);
+  col_out[2] = (short)((b1 - c1 + 4) >> 3);
+  for (row = 0; row < 4; ++row) {
+    uint8_t *d = dst + base + (y + row) * stride + x;
+    for (col = 0; col < 4; ++col) {
+      d[col] = clip_u8_int((int)d[col] + col_out[col]);
+    }
+  }
+}
+
 static void apply_res4_to_frame(uint8_t *dst, int mb_index,
                                 const ResBlock *block, int res_q) {
   int base;
@@ -1624,6 +1666,10 @@ static void apply_res4_to_frame(uint8_t *dst, int mb_index,
   }
   if ((block->coeff_mask & (uint16_t)~0x020d) == 0) {
     apply_res4_col0_to_frame(dst, base, stride, x, y, block, block_res_q);
+    return;
+  }
+  if ((block->coeff_mask & (uint16_t)~0x0063) == 0) {
+    apply_res4_row0_to_frame(dst, base, stride, x, y, block, block_res_q);
     return;
   }
   memset(deq, 0, sizeof(deq));
