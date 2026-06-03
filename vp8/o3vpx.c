@@ -1562,29 +1562,30 @@ static void apply_res4_to_frame(uint8_t *dst, int mb_index,
   int x;
   int y;
   int z;
+  int block_res_q;
   short deq[16];
   if (block->type == REPAIR_CAND_RAW4) {
     copy_raw4_bytes_to_frame(dst, mb_index, block);
     return;
   }
-  memset(deq, 0, sizeof(deq));
   patch4_geometry(mb_index, block->plane, block->block, &base, &stride, &x,
                   &y);
+  block_res_q = plane_res_q(res_q, block->plane);
+  if (block->coeff_mask == 1) {
+    const short dc = (short)(block->qcoeff[0] * coeff_q_step(block_res_q, 0));
+    vp8_dc_only_idct_add_c(dc, dst + base + y * stride + x, stride,
+                           dst + base + y * stride + x, stride);
+    return;
+  }
+  memset(deq, 0, sizeof(deq));
   for (z = 0; z < 16; ++z) {
     if (block->coeff_mask & (uint16_t)(1u << z)) {
       const int rc = vp8_zigzag[z];
-      deq[rc] =
-          (short)(block->qcoeff[rc] *
-                  coeff_q_step_plane(res_q, rc, block->plane));
+      deq[rc] = (short)(block->qcoeff[rc] * coeff_q_step(block_res_q, rc));
     }
   }
-  if (block->coeff_mask == 1) {
-    vp8_dc_only_idct_add_c(deq[0], dst + base + y * stride + x, stride,
-                           dst + base + y * stride + x, stride);
-  } else {
-    vp8_short_idct4x4llm_c(deq, dst + base + y * stride + x, stride,
-                           dst + base + y * stride + x, stride);
-  }
+  vp8_short_idct4x4llm_c(deq, dst + base + y * stride + x, stride,
+                         dst + base + y * stride + x, stride);
 }
 
 static void write_repair4(Buffer *payload, const uint8_t *src, int mb_index,
@@ -1665,7 +1666,6 @@ static int read_res4(O3vpxReader *reader, ResBlock *block) {
   uint8_t plane_type;
   uint8_t slot;
   int table_coded;
-  memset(block, 0, sizeof(*block));
   plane_type = get_u8(reader);
   table_coded = ((plane_type & REPAIR_TABLE_FLAG) == REPAIR_TABLE_FLAG);
   block->type =
@@ -2863,7 +2863,6 @@ static int decode_next_frame_from_reader(O3vpxReader *reader, uint8_t *ref,
     info->frame_type = (unsigned int)frame_type;
     info->frame_size_bytes = (unsigned int)(6 + payload_len);
   }
-  memcpy(ref, recon, FRAME_SIZE);
   return 1;
 }
 
@@ -2914,12 +2913,18 @@ int vp8_o3vpx_decoder_init(void *decoder, size_t decoder_size,
 int vp8_o3vpx_decoder_next_frame(void *decoder, O3vpxFrameInfo *info) {
   O3vpxDecoderState *state = (O3vpxDecoderState *)decoder;
   int rc;
+  uint8_t *tmp;
   if (!state || !state->ref || !state->recon) return -1;
   if (state->frame_no >= state->frames) return 0;
-  rc = decode_next_frame_from_reader(&state->reader, state->ref, state->recon,
+  rc = decode_next_frame_from_reader(&state->reader, state->recon, state->ref,
                                      state->res_q, state->frame_no, info,
                                      NULL);
-  if (rc > 0) ++state->frame_no;
+  if (rc > 0) {
+    tmp = state->recon;
+    state->recon = state->ref;
+    state->ref = tmp;
+    ++state->frame_no;
+  }
   return rc;
 }
 
@@ -3003,11 +3008,15 @@ int vp8_o3vpx_decode_file_limit(const char *in_path, const char *out_path,
   if (max_frames > 0 && max_frames < frames) frames = max_frames;
   t0 = now_seconds();
   for (frame_no = 0; frame_no < frames; ++frame_no) {
+    uint8_t *tmp;
     decode_next_frame_from_reader(
         &reader, ref, recon, res_q, frame_no, NULL, &total_bytes);
     if (out && fwrite(recon, 1, FRAME_SIZE, out) != FRAME_SIZE) {
       die_errno("write failed");
     }
+    tmp = ref;
+    ref = recon;
+    recon = tmp;
   }
   elapsed = now_seconds() - t0;
   fprintf(stderr,
